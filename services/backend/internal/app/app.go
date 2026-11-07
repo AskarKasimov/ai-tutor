@@ -234,12 +234,30 @@ func (a *App) RunBackground(ctx context.Context) error {
 	group.Go(func() error {
 		// The queue does not survive a restart: the questions of published
 		// graphs are queued again.
-		if err := a.graphWorker.PrepareVoices(warmCtx); err != nil {
-			a.logger.Warn("questions of published graphs are not voiced ahead", zap.Error(err))
-		}
-		return nil
+		return recoverPublishedAudio(warmCtx, a.graphWorker.PrepareVoices, a.warmer.MarkRecoveryComplete, time.Second, a.logger)
 	})
 	return group.Wait()
+}
+
+func recoverPublishedAudio(ctx context.Context, prepare func(context.Context) error, complete func(), delay time.Duration, logger *zap.Logger) error {
+	for {
+		if err := prepare(ctx); err == nil {
+			complete()
+			return nil
+		} else if ctx.Err() != nil {
+			return nil
+		} else {
+			logger.Warn("questions of published graphs are not voiced ahead", zap.Error(err), zap.Duration("retry_in", delay))
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+		delay = min(2*delay, 30*time.Second)
+	}
 }
 
 type materialsStorageAdapter struct {
@@ -268,7 +286,10 @@ func (a *App) Handler() http.Handler {
 	authHandlers := authhttp.New(auth, a.now)
 	voice := voiceapp.New(voicepg.New(a.pool), a.recognizer(), a.synthesizer(), a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
-	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
+	subjectService := subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now)
+	subjectService.SetAudioProgress(a.warmer, subjectpg.NewLearningAudioProgress(a.pool))
+	subjectService.SetExamAudioRefresh(a.graphWorker.RefreshPublishedAudio)
+	subjectHandlers := subjecthttp.New(subjectService)
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
@@ -301,6 +322,7 @@ func (a *App) Handler() http.Handler {
 	examMux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(materialsHandlers.ListMaterials))))
 	graphHandlers := graphhttp.New(a.graphWorker)
 	examMux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Read))))
+	examMux.Handle("GET /admin/subjects/{subject_id}/audio-preparation", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(subjectHandlers.AudioPreparation))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Build))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.ImportMap))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.SkipMissingCriteria))))

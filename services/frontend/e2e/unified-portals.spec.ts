@@ -36,6 +36,10 @@ test('one browser context switches modes while student and admin sessions stay s
     ready: true,
     learning_ready: true,
     exam_ready: true,
+    preparation: {
+      exam: { state: 'ready', source: 'competency_map', stale: false },
+      learn: { state: 'ready' },
+    },
   }
   const otherSubject = {
     id: 'subject-2',
@@ -43,6 +47,10 @@ test('one browser context switches modes while student and admin sessions stay s
     ready: false,
     learning_ready: false,
     exam_ready: false,
+    preparation: {
+      exam: { state: 'empty', source: null, stale: false },
+      learn: { state: 'empty' },
+    },
   }
 
   await page.route('**/api/v1/**', async (route) => {
@@ -111,6 +119,29 @@ test('one browser context switches modes while student and admin sessions stay s
     }
     if (path.endsWith('/subjects')) {
       await route.fulfill({ json: [subject, otherSubject] })
+      return
+    }
+    if (path.endsWith('/audio-preparation')) {
+      const direction = {
+        version: '1',
+        state: 'ready',
+        total: 1,
+        unchecked: 0,
+        queued: 0,
+        processing: 0,
+        retry_wait: 0,
+        ready: 1,
+        failed: 0,
+        unavailable: 0,
+        observed_at: '2026-10-05T00:00:00Z',
+      }
+      await route.fulfill({
+        json: {
+          subject_id: path.split('/')[4],
+          exam: { ...direction, published: true },
+          learn: { ...direction, revision: 1 },
+        },
+      })
       return
     }
     if (path.endsWith('/learning-state')) {
@@ -409,7 +440,7 @@ test('one browser context switches modes while student and admin sessions stay s
   await page.goto(`/admin/courses/${subject.id}`)
   await expect(page).toHaveURL(new RegExp(`/admin/courses/${subject.id}$`))
   await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
-  await expect(page.getByText('Обучение готово').last()).toBeVisible()
+  await expect(page.getByText('Обучение: готово')).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
   await expect(
     page.getByText('Карта компетенций успешно загружена'),

@@ -40,6 +40,10 @@ const subjects = [
     ready: true,
     learning_ready: true,
     exam_ready: true,
+    preparation: {
+      exam: { state: 'ready', source: 'materials', stale: false },
+      learn: { state: 'ready' },
+    },
   },
   {
     id: 'subject-b',
@@ -47,6 +51,10 @@ const subjects = [
     ready: false,
     learning_ready: false,
     exam_ready: false,
+    preparation: {
+      exam: { state: 'empty', source: null, stale: false },
+      learn: { state: 'empty' },
+    },
   },
 ]
 
@@ -196,6 +204,10 @@ function backend(
         ready: false,
         learning_ready: false,
         exam_ready: false,
+        preparation: {
+          exam: { state: 'empty', source: null, stale: false },
+          learn: { state: 'empty' },
+        },
       }
       activeSubjects.push(subject)
       return new Response(JSON.stringify(subject))
@@ -419,9 +431,19 @@ it('opens course preparation after the common course list and keeps its ID acros
   expect(
     screen.queryByRole('navigation', { name: 'Разделы администрирования' }),
   ).not.toBeInTheDocument()
-  fireEvent.click(
-    await screen.findByRole('link', { name: /Машинное обучение/ }),
-  )
+  const emptyCourse = await screen.findByRole('link', { name: /Статистика/ })
+  expect(
+    within(emptyCourse).getByText('Экзамен: материалы не загружены'),
+  ).toBeVisible()
+  expect(
+    within(emptyCourse).getByText('Обучение: материалы не загружены'),
+  ).toBeVisible()
+  const readyCourse = await screen.findByRole('link', {
+    name: /Машинное обучение/,
+  })
+  expect(within(readyCourse).getByText('Экзамен: готов')).toBeVisible()
+  expect(within(readyCourse).getByText('Обучение: готово')).toBeVisible()
+  fireEvent.click(readyCourse)
   expect(
     await screen.findByRole('heading', {
       name: 'Материалы для обучения',

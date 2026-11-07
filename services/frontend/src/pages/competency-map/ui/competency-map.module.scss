@@ -575,3 +575,11 @@
 .graphMode {
   justify-self: start;
 }
+
+.mapImportButton {
+  max-width: 100%;
+  height: auto;
+  flex-wrap: wrap;
+  white-space: normal;
+  text-align: left;
+}

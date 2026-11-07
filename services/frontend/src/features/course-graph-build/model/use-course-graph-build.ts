@@ -20,6 +20,7 @@ export function useLatestCourseGraphBuildQuery(
   const { courseGraph } = useCourseGraphBuildDependencies()
   const cache = useQueryClient()
   const lastSuccessRef = useRef<string | null>(null)
+  const lastObservedRef = useRef<string | null>(null)
   const wasMaterialsBusy = useRef(materialsBusy)
   useEffect(() => {
     if (wasMaterialsBusy.current && !materialsBusy) {
@@ -69,6 +70,23 @@ export function useLatestCourseGraphBuildQuery(
         ? 2000
         : false,
   })
+  useEffect(() => {
+    const build = query.data
+    if (!build) return
+    const key = `${build.status}:${build.source}:${build.inputsReady}`
+    if (lastObservedRef.current === key) return
+    lastObservedRef.current = key
+    void cache.invalidateQueries({
+      queryKey: subjectQueryKeys.subjects(userId),
+      exact: false,
+    })
+  }, [
+    cache,
+    query.data?.inputsReady,
+    query.data?.source,
+    query.data?.status,
+    userId,
+  ])
   useEffect(() => {
     if (query.data?.status !== 'succeeded') return
     if (lastSuccessRef.current === query.data.id) return
@@ -193,6 +211,9 @@ export function useStartCourseGraphBuildMutation(
         cache.invalidateQueries({
           queryKey: subjectQueryKeys.subjects(userId),
         }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.audioPreparation(userId, targetSubjectId),
+        }),
       ])
     },
     onError: async (error, input) => {
@@ -201,9 +222,18 @@ export function useStartCourseGraphBuildMutation(
       if (!isCurrentSession(cache, tokenRef.current)) return
       if (error instanceof CourseGraphApiError && error.status === 401)
         await replaceSession(cache, null)
-      await cache.invalidateQueries({
-        queryKey: courseGraphQueryKeys.build(userId, targetSubjectId),
-      })
+      await Promise.all([
+        cache.invalidateQueries({
+          queryKey: courseGraphQueryKeys.build(userId, targetSubjectId),
+        }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.subjects(userId),
+          exact: false,
+        }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.audioPreparation(userId, targetSubjectId),
+        }),
+      ])
     },
     retry: false,
   })
@@ -253,12 +283,22 @@ export function useImportCompetencyMapMutation(
         cache.invalidateQueries({
           queryKey: subjectQueryKeys.subjects(userId),
         }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.audioPreparation(userId, subjectId),
+        }),
       ])
     },
     onError: async (error) => {
       if (!isCurrentSession(cache, tokenRef.current)) return
       if (error instanceof CourseGraphApiError && error.status === 401)
         await replaceSession(cache, null)
+      await cache.invalidateQueries({
+        queryKey: subjectQueryKeys.subjects(userId),
+        exact: false,
+      })
+      await cache.invalidateQueries({
+        queryKey: subjectQueryKeys.audioPreparation(userId, subjectId),
+      })
     },
     retry: false,
   })

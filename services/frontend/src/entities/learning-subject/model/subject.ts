@@ -1,9 +1,12 @@
+import type { CoursePreparation } from '@/entities/subject/@x/learning-subject'
+
 export type Subject = {
   id: string
   name: string
   ready: boolean
   learning_ready: boolean
   exam_ready: boolean
+  preparation?: CoursePreparation
 }
 
 export type LearningState = {

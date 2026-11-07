@@ -21,6 +21,14 @@ func (r *Repository) Create(ctx context.Context, id, name string, createdAt int6
 	return subject.Subject{ID: created.ID, Name: created.Name}, nil
 }
 
+func (r *Repository) AudioPreparationState(ctx context.Context, subjectID string) (bool, bool, error) {
+	state, err := r.queries.SubjectAudioPreparationState(ctx, subjectID)
+	if err != nil {
+		return false, false, err
+	}
+	return state.SubjectExists, state.GraphPublished, nil
+}
+
 func (r *Repository) List(ctx context.Context) ([]subject.Subject, error) {
 	rows, err := r.queries.ListSubjects(ctx)
 	if err != nil {
@@ -30,6 +38,20 @@ func (r *Repository) List(ctx context.Context) ([]subject.Subject, error) {
 	for _, row := range rows {
 		items = append(items, subject.Subject{
 			ID: row.ID, Name: row.Name, ExamReady: row.ExamReady, LearningReady: row.LearningReady,
+			Preparation: func() *subject.CoursePreparation {
+				preparation := subject.ProjectPreparation(subject.PreparationFacts{
+					HasMaterials: row.HasMaterials, HasMap: row.HasMap,
+					JobSource: row.JobSource, JobStatus: row.JobStatus,
+					JobFingerprintCurrent: row.JobFingerprintCurrent,
+					GraphExists:           row.GraphExists, GraphSource: row.GraphSource,
+					GraphFingerprintCurrent: row.GraphFingerprintCurrent,
+					GraphStale:              row.GraphStale,
+					MaterialsProcessing:     row.MaterialsProcessing, MaterialsQueued: row.MaterialsQueued,
+					MaterialsFailed: row.MaterialsFailed, MaterialsNeedMetadata: row.MaterialsNeedMetadata,
+					LearningMapActive: row.LearningMapActive, LearningReady: row.LearningReady,
+				})
+				return &preparation
+			}(),
 		})
 	}
 	return items, nil

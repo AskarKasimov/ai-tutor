@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audiopreparation"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -85,6 +87,20 @@ func TestWarmerVoicesPreparedQuestionsOnceBeforeStudentsAsk(t *testing.T) {
 	defer voice.mu.Unlock()
 	if len(voice.calls) != 2 || voice.calls[0] != "Почему A* оптимален?" || voice.calls[1] != "Зачем эвристика?" {
 		t.Fatalf("synthesized %q", voice.calls)
+	}
+}
+
+func TestRepeatedTrackRestoredPreservesProgressForTheSameGraph(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(nil, nil, staticVoiceName("voice-v1")), nil)
+	warmer.TrackRestored("course", "graph-v1", []string{"Вопрос?"})
+	key := progressKey("Вопрос?")
+	warmer.progress.TransitionSubject("course", key, audiopreparation.StatusReady)
+	before, _ := warmer.Snapshot("course")
+
+	warmer.TrackRestored("course", "graph-v1", []string{"Вопрос?"})
+	after, _ := warmer.Snapshot("course")
+	if after.Ready != 1 || after.ObservedAt != before.ObservedAt {
+		t.Fatalf("repeat restore changed progress: before=%+v after=%+v", before, after)
 	}
 }
 
@@ -231,5 +247,84 @@ func TestConcurrentMissesOfOneQuestionSynthesizeOnce(t *testing.T) {
 	defer voice.mu.Unlock()
 	if len(voice.calls) != 1 {
 		t.Fatalf("the same question was synthesized %d times", len(voice.calls))
+	}
+}
+
+func TestWarmerCompletionUpdatesNewlyPublishedGraphWhileTextPending(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
+	text := "Общий вопрос?"
+	warmer.TrackPublished("course", "old", []string{text})
+	warmer.Prepare([]string{text})
+	// The cache operation has completed, but the pending entry has not yet been removed.
+	warmer.progress.Transition(progressKey(text), audiopreparation.StatusReady)
+	warmer.TrackPublished("course", "new", []string{text})
+	warmer.Prepare([]string{text})
+	warmer.done(text)
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Ready != 1 || snapshot.Unchecked != 0 {
+		t.Fatalf("new graph lost completed audio: %+v", snapshot)
+	}
+}
+
+func TestWarmerCountsNewlyPublishedWaitingTextsAsQueued(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
+	warmer.TrackPublished("course", "graph", []string{"Первый?", "Второй?"})
+	warmer.Prepare([]string{"Первый?", "Второй?"})
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Queued != 2 || snapshot.Unchecked != 0 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
+func TestWarmerRecoveryCompletionAndRestoredKeys(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
+	if warmer.RecoveryComplete() {
+		t.Fatal("recovery must start incomplete")
+	}
+	warmer.TrackRestored("course", "graph", []string{"Вопрос?"})
+	warmer.Prepare([]string{"Вопрос?"})
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Unchecked != 1 {
+		t.Fatalf("restored key should await cache check: %+v", snapshot)
+	}
+	warmer.MarkRecoveryComplete()
+	if !warmer.RecoveryComplete() {
+		t.Fatal("recovery should be complete")
+	}
+}
+
+func TestPublishedGraphInheritsPendingTextState(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
+	warmer.Prepare([]string{"Вопрос?"})
+	warmer.transition("Вопрос?", audiopreparation.StatusProcessing)
+	warmer.TrackPublished("course", "graph", []string{"Вопрос?"})
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Processing != 1 || snapshot.Queued != 0 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	warmer.transition("Вопрос?", audiopreparation.StatusRetryWait)
+	warmer.TrackPublished("course", "graph2", []string{"Вопрос?"})
+	snapshot, _ = warmer.Snapshot("course")
+	if snapshot.RetryWait != 1 || snapshot.Queued != 0 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
+func TestWarmerVoiceIdentityRetriesLookup(t *testing.T) {
+	calls := 0
+	name := func(context.Context) (string, error) {
+		calls++
+		if calls == 1 {
+			return "", errors.New("voice unavailable")
+		}
+		return "profile:revision", nil
+	}
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, name), nil)
+	if _, err := warmer.VoiceName(context.Background()); err == nil {
+		t.Fatal("expected voice lookup error")
+	}
+	got, err := warmer.VoiceName(context.Background())
+	if err != nil || got != "profile:revision" {
+		t.Fatalf("voice=%q err=%v", got, err)
 	}
 }

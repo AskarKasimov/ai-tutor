@@ -10,6 +10,7 @@ import {
 } from '@/entities/user'
 import { competencyMapQueryKeys } from './query-keys'
 import { subjectQueryKeys } from '@/entities/learning-subject'
+import { subjectQueryKeys as examSubjectQueryKeys } from '@/entities/subject'
 
 export function useCompetencyMapQuery(userId: string, subjectId: string) {
   const { competencyMap } = useCompetencyMapDependencies()
@@ -146,9 +147,22 @@ export function useImportCompetencyMapMutation(
       cache.invalidateQueries({
         queryKey: competencyMapQueryKeys.competencyMap(userId, targetSubjectId),
       }),
-      cache.invalidateQueries({ queryKey: subjectQueryKeys.subjects(userId) }),
+      cache.invalidateQueries({
+        queryKey: subjectQueryKeys.subjects(userId),
+        exact: false,
+      }),
+      cache.invalidateQueries({
+        queryKey: examSubjectQueryKeys.subjects(userId),
+        exact: false,
+      }),
       cache.invalidateQueries({
         queryKey: subjectQueryKeys.learningState(userId, targetSubjectId),
+      }),
+      cache.invalidateQueries({
+        queryKey: examSubjectQueryKeys.audioPreparation(
+          userId,
+          targetSubjectId,
+        ),
       }),
     ])
   }

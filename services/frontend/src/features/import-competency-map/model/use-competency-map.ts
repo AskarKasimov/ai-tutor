@@ -19,13 +19,24 @@ import {
 } from '@/entities/user'
 import { materialsRefetchInterval } from './material-processing'
 import { competencyMapQueryKeys } from './query-keys'
+import { subjectQueryKeys } from '@/entities/subject'
+
+function invalidateCatalogs(
+  cache: ReturnType<typeof useQueryClient>,
+  userId: string,
+) {
+  return cache.invalidateQueries({
+    queryKey: subjectQueryKeys.subjects(userId),
+    exact: false,
+  })
+}
 
 export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
   const { competencyMap } = useCompetencyMapDependencies()
   const cache = useQueryClient()
   // Auth epoch is QueryClient-local and intentionally not part of the public resource key.
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
-  return useQuery({
+  const query = useQuery({
     queryKey: competencyMapQueryKeys.subjectMaterials(userId, subjectId),
     enabled: !!userId && !!subjectId,
     queryFn: async ({ signal }) => {
@@ -54,6 +65,21 @@ export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
     },
     refetchInterval: (query) => materialsRefetchInterval(query.state.data),
   })
+  const previousStatus = useRef<string | null>(null)
+  const status =
+    query.data
+      ?.map(
+        (material) =>
+          `${material.id}:${material.status}:${material.processing?.status ?? '-'}:${material.cleaning?.status ?? '-'}`,
+      )
+      .join('|') ?? null
+  useEffect(() => {
+    if (status === null) return
+    if (previousStatus.current !== null && previousStatus.current !== status)
+      void invalidateCatalogs(cache, userId)
+    previousStatus.current = status
+  }, [cache, status, userId])
+  return query
 }
 
 export function useCourseMaterialKindsQuery(userId: string) {
@@ -140,6 +166,7 @@ export function useUploadCourseMaterialsMutation(
           variables.subjectId,
         ),
       })
+      await invalidateCatalogs(cache, userId)
     },
     onError: async (error, variables) => {
       if (!isCurrentSession(cache, tokenRef.current)) return
@@ -151,6 +178,7 @@ export function useUploadCourseMaterialsMutation(
           variables.subjectId,
         ),
       })
+      await invalidateCatalogs(cache, userId)
     },
     retry: false,
   })
@@ -205,6 +233,7 @@ export function useReplaceCourseMaterialMutation(
       await cache.invalidateQueries({
         queryKey: competencyMapQueryKeys.subjectMaterials(userId, subjectId),
       })
+      await invalidateCatalogs(cache, userId)
     },
     onError: async (error) => {
       if (!isCurrentSession(cache, tokenRef.current)) return
@@ -213,6 +242,7 @@ export function useReplaceCourseMaterialMutation(
       await cache.invalidateQueries({
         queryKey: competencyMapQueryKeys.subjectMaterials(userId, subjectId),
       })
+      await invalidateCatalogs(cache, userId)
     },
     retry: false,
   })
@@ -256,6 +286,7 @@ export function useUpdateCourseMaterialMetadataMutation(
           variables.subjectId || subjectId,
         ),
       })
+      await invalidateCatalogs(cache, userId)
     },
     onError: async (error, variables) => {
       if (!isCurrentSession(cache, tokenRef.current)) return
@@ -267,6 +298,7 @@ export function useUpdateCourseMaterialMetadataMutation(
           variables.subjectId || subjectId,
         ),
       })
+      await invalidateCatalogs(cache, userId)
     },
     retry: false,
   })
@@ -308,6 +340,13 @@ export function useDeleteCourseMaterialMutation(
           variables.subjectId || subjectId,
         ),
       })
+      await invalidateCatalogs(cache, userId)
+    },
+    onError: async (error) => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      if (error instanceof CompetencyMapApiError && error.status === 401)
+        await replaceSession(cache, null)
+      await invalidateCatalogs(cache, userId)
     },
     retry: false,
   })

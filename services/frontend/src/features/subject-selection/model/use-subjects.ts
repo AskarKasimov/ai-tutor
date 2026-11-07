@@ -37,15 +37,56 @@ async function fetchScoped<T>(
   }
 }
 
-export function useSubjectsQuery(userId: string) {
+export function useSubjectsQuery(userId: string, admin = false) {
   const { subjects } = useSubjectSelectionDependencies()
   const client = useQueryClient()
   // eslint-disable-next-line @tanstack/query/exhaustive-deps -- the API port and auth epoch are stable dependencies outside the resource key.
   return useQuery({
     queryKey: subjectSelectionQueryKeys.subjects(userId),
     enabled: !!userId,
+    refetchInterval: admin ? 5_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     queryFn: ({ signal }) =>
-      fetchScoped(userId, signal, subjects.listSubjects, client),
+      fetchScoped(
+        userId,
+        signal,
+        (requestSignal) => subjects.listSubjects(requestSignal, admin),
+        client,
+      ),
+  })
+}
+
+export function useAudioPreparationQuery(
+  userId: string,
+  subjectId: string,
+  direction: 'exam' | 'learn',
+) {
+  const { subjects } = useSubjectSelectionDependencies()
+  const client = useQueryClient()
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps -- API and auth epoch are stable dependencies outside the resource key.
+  return useQuery({
+    queryKey: [
+      ...subjectSelectionQueryKeys.audioPreparation(userId, subjectId),
+      direction,
+    ],
+    enabled: !!userId && !!subjectId,
+    queryFn: async ({ signal }) => {
+      const result = await fetchScoped(
+        userId,
+        signal,
+        (requestSignal) =>
+          subjects.readAudioPreparation(subjectId, direction, requestSignal),
+        client,
+      )
+      if (!result[direction])
+        throw new SubjectApiError(503, 'AUDIO_PROGRESS_UNAVAILABLE')
+      return result
+    },
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    retry: false,
   })
 }
 export function useCreateSubjectMutation(userId: string) {

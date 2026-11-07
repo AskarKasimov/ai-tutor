@@ -3,6 +3,7 @@ package subjecthttp
 import (
 	"net/http"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audiopreparation"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
@@ -20,7 +21,7 @@ type CreateRequest struct {
 
 // Create handles POST /admin/subjects.
 // @Summary Создать предмет
-// @Description Создать предмет без карты компетенций. Доступно только admin.
+// @Description Создать общий курс. Admin получает начальный снимок статусов подготовки; студентам preparation не возвращается.
 // @ID createSubject
 // @Tags Предметы
 // @Security accessCookie
@@ -54,7 +55,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 // CreateLearning is a compatibility alias for common course creation.
 // @Summary Создать общий предмет
-// @Description Совместимый адрес создания общей сущности курса. Новый интерфейс использует POST /exam/admin/subjects.
+// @Description Совместимый адрес создания общей сущности курса с начальным снимком статусов подготовки.
 // @ID createLearningSubject
 // @Tags Предметы обучения
 // @Security accessCookie
@@ -71,7 +72,7 @@ func (h *Handler) CreateLearning(w http.ResponseWriter, r *http.Request) { h.Cre
 
 // List handles GET /subjects.
 // @Summary Прочитать каталог предметов
-// @Description Студентам возвращаются только готовые курсы: с фикстурой графа — сразу после создания, без неё — с опубликованным графом курса. Admin видит все предметы и признак готовности.
+// @Description Студентам возвращаются только готовые курсы с прежними флагами и без preparation. Admin видит все курсы и пакетный снимок состояний подготовки.
 // @ID listSubjects
 // @Tags Предметы
 // @Security accessCookie
@@ -109,7 +110,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, learning bool) {
 
 // ListLearning returns common courses with learning-specific readiness.
 // @Summary Прочитать каталог обучения
-// @Description Прочитать каталог предметов режима обучения.
+// @Description Прочитать каталог обучения; admin получает тот же снимок подготовки, что и в экзаменационном каталоге.
 // @ID listLearningSubjects
 // @Tags Предметы обучения
 // @Security accessCookie
@@ -121,3 +122,40 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, learning bool) {
 func (h *Handler) ListLearning(w http.ResponseWriter, r *http.Request) {
 	h.list(w, r, true)
 }
+
+// AudioPreparation returns the independent exam and learning audio snapshots.
+// @Summary Прочитать прогресс фоновой озвучки курса
+// @Description Возвращает снимок выбранного направления; остальные поля направления равны null. Если запрошенный снимок временно недоступен, его поле тоже равно null. Счётчики направлений взаимоисключающие и в сумме равны total; версия защищает от смешивания ревизий. State precedence для экзамена: no_graph, empty, checking, processing, queued, retry_wait, partial, ready; для обучения то же, кроме no_graph.
+// @ID getSubjectAudioPreparation
+// @Tags Предметы
+// @Security accessCookie
+// @Produce json
+// @Param subject_id path string true "ID курса"
+// @Param direction query string true "Направление" Enums(exam, learn)
+// @Success 200 {object} audiopreparation.Response
+// @Failure 422 {object} fault.Error
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /exam/admin/subjects/{subject_id}/audio-preparation [get]
+func (h *Handler) AudioPreparation(w http.ResponseWriter, r *http.Request) {
+	actor, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		return
+	}
+	direction := r.URL.Query().Get("direction")
+	if direction != "exam" && direction != "learn" {
+		httpx.Error(r.Context(), w, fault.Validation("direction", "Укажите направление exam или learn."))
+		return
+	}
+	result, err := h.service.AudioPreparation(r.Context(), actor, r.PathValue("subject_id"), direction)
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, result)
+}
+
+var _ = audiopreparation.Response{}

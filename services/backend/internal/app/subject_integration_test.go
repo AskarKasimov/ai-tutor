@@ -98,15 +98,28 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 		t.Fatalf("create subject: %d %s", created.Code, created.Body.String())
 	}
 	var value struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Ready bool   `json:"ready"`
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Ready       bool   `json:"ready"`
+		Preparation struct {
+			Exam struct {
+				State  string  `json:"state"`
+				Source *string `json:"source"`
+				Stale  bool    `json:"stale"`
+			} `json:"exam"`
+			Learn struct {
+				State string `json:"state"`
+			} `json:"learn"`
+		} `json:"preparation"`
 	}
 	if err := json.Unmarshal(created.Body.Bytes(), &value); err != nil {
 		t.Fatal(err)
 	}
 	if value.ID == "" || value.Name != "Пустой предмет" || value.Ready {
 		t.Fatalf("created subject: %+v", value)
+	}
+	if value.Preparation.Exam.State != "empty" || value.Preparation.Exam.Source != nil || value.Preparation.Exam.Stale || value.Preparation.Learn.State != "empty" {
+		t.Fatalf("created subject preparation: %+v", value.Preparation)
 	}
 	var persistedName string
 	if err := f.pool.QueryRow(context.Background(), `SELECT name FROM subjects WHERE id=$1`, value.ID).Scan(&persistedName); err != nil || persistedName != value.Name {
@@ -115,15 +128,30 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 
 	adminCatalog := f.request(http.MethodGet, "/subjects", "", admin)
 	var items []struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Ready bool   `json:"ready"`
+		ID          string          `json:"id"`
+		Name        string          `json:"name"`
+		Ready       bool            `json:"ready"`
+		Preparation json.RawMessage `json:"preparation"`
 	}
 	if adminCatalog.Code != http.StatusOK || json.Unmarshal(adminCatalog.Body.Bytes(), &items) != nil {
 		t.Fatalf("admin catalog: %d %s", adminCatalog.Code, adminCatalog.Body.String())
 	}
-	if len(items) != 1 || items[0].Ready {
+	if len(items) != 1 || items[0].Ready || len(items[0].Preparation) == 0 {
 		t.Fatalf("admin should see the created empty subject: %+v", items)
+	}
+	compatible := f.request(http.MethodPost, "/learn/admin/subjects", `{"name":"Совместимый курс"}`, admin)
+	var compatibilityResponse struct {
+		Preparation struct {
+			Exam struct {
+				State string `json:"state"`
+			} `json:"exam"`
+			Learn struct {
+				State string `json:"state"`
+			} `json:"learn"`
+		} `json:"preparation"`
+	}
+	if compatible.Code != http.StatusCreated || json.Unmarshal(compatible.Body.Bytes(), &compatibilityResponse) != nil || compatibilityResponse.Preparation.Exam.State != "empty" || compatibilityResponse.Preparation.Learn.State != "empty" {
+		t.Fatalf("compatibility create should return empty preparation: %d %s", compatible.Code, compatible.Body.String())
 	}
 }
 
@@ -150,10 +178,11 @@ VALUES ($1,'exam.xlsx','Экзамен','exam-v1','{"marker":"exam-before-learni
 		t.Fatal(err)
 	}
 	type catalogSubject struct {
-		ID            string `json:"id"`
-		Ready         bool   `json:"ready"`
-		LearningReady bool   `json:"learning_ready"`
-		ExamReady     bool   `json:"exam_ready"`
+		ID            string          `json:"id"`
+		Ready         bool            `json:"ready"`
+		LearningReady bool            `json:"learning_ready"`
+		ExamReady     bool            `json:"exam_ready"`
+		Preparation   json.RawMessage `json:"preparation"`
 	}
 	readCatalog := func(path string, actor *http.Cookie) []catalogSubject {
 		t.Helper()
@@ -164,6 +193,7 @@ VALUES ($1,'exam.xlsx','Экзамен','exam-v1','{"marker":"exam-before-learni
 		}
 		return items
 	}
+	var firstPreparation json.RawMessage
 	for _, path := range []string{"/subjects", "/learn/subjects"} {
 		items := readCatalog(path, admin)
 		if len(items) != 1 || items[0].ID != course.ID {
@@ -171,6 +201,29 @@ VALUES ($1,'exam.xlsx','Экзамен','exam-v1','{"marker":"exam-before-learni
 		}
 		if items[0].LearningReady || items[0].ExamReady || items[0].Ready {
 			t.Fatalf("direction readiness is not independent in %s: %+v", path, items[0])
+		}
+		if len(items[0].Preparation) == 0 {
+			t.Fatalf("admin preparation missing in %s", path)
+		}
+		var preparation struct {
+			Exam struct {
+				State  string  `json:"state"`
+				Source *string `json:"source"`
+			} `json:"exam"`
+			Learn struct {
+				State string `json:"state"`
+			} `json:"learn"`
+		}
+		if err := json.Unmarshal(items[0].Preparation, &preparation); err != nil {
+			t.Fatalf("decode preparation: %v", err)
+		}
+		if preparation.Exam.State != "needs_build" || preparation.Exam.Source == nil || *preparation.Exam.Source != "competency_map" || preparation.Learn.State != "empty" {
+			t.Fatalf("newly imported exam map preparation: %+v", preparation)
+		}
+		if firstPreparation == nil {
+			firstPreparation = items[0].Preparation
+		} else if string(firstPreparation) != string(items[0].Preparation) {
+			t.Fatalf("preparation differs between catalogs: %s vs %s", firstPreparation, items[0].Preparation)
 		}
 	}
 	if items := readCatalog("/subjects", student); len(items) != 0 {
@@ -207,6 +260,8 @@ FROM learning_map_imports WHERE subject_id=$1`, course.ID).Scan(&importedCounts)
 	}
 	if items := readCatalog("/learn/subjects", student); len(items) != 1 || items[0].ID != course.ID {
 		t.Fatalf("learning-ready shared course should appear in learning catalog: %+v", items)
+	} else if len(items[0].Preparation) != 0 {
+		t.Fatalf("student catalog must omit preparation: %+v", items[0])
 	}
 	if items := readCatalog("/subjects", student); len(items) != 0 {
 		t.Fatalf("learning readiness must not make exam course ready: %+v", items)
@@ -221,6 +276,8 @@ VALUES ($1,'competency_map','exam-v1','{"marker":"exam-after-learning-import"}',
 	}
 	if items := readCatalog("/subjects", student); len(items) != 1 || items[0].ID != course.ID {
 		t.Fatalf("published exam graph should independently enable exam catalog: %+v", items)
+	} else if len(items[0].Preparation) != 0 {
+		t.Fatalf("student exam catalog must omit preparation: %+v", items[0])
 	}
 	if items := readCatalog("/learn/subjects", student); len(items) != 1 || items[0].ID != course.ID {
 		t.Fatalf("exam graph change must not affect learning readiness: %+v", items)
@@ -332,4 +389,93 @@ func TestSubjectWithAGraphOfACompetencyMapIsReadyWithoutMaterials(t *testing.T) 
 	if items := catalog(); len(items) != 1 || items[0].ID != value.ID || !items[0].Ready {
 		t.Fatalf("student catalog should contain the subject of the map without materials: %+v", items)
 	}
+}
+
+func TestAdminCatalogProjectsMaterialPreparationAndKeepsOldGraphAvailable(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	admin := f.admin(t)
+	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Статус материалов"}`, admin)
+	var course struct {
+		ID string `json:"id"`
+	}
+	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &course) != nil || course.ID == "" {
+		t.Fatalf("create subject: %d %s", created.Code, created.Body.String())
+	}
+	ctx := context.Background()
+	if _, err := f.pool.Exec(ctx, `INSERT INTO subject_materials(id,subject_id,filename,content_type,s3_raw_key,s3_parsed_key,status,created_at,updated_at)
+VALUES ('material:status',$1,'lecture.pdf','application/pdf','raw','parsed','pending',1,1)`, course.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO material_ocr_jobs(material_id,updated_at) VALUES ('material:status',1)`); err != nil {
+		t.Fatal(err)
+	}
+	type status struct {
+		ID          string `json:"id"`
+		ExamReady   bool   `json:"exam_ready"`
+		Preparation struct {
+			Exam struct {
+				State  string  `json:"state"`
+				Source *string `json:"source"`
+				Stale  bool    `json:"stale"`
+			} `json:"exam"`
+		} `json:"preparation"`
+	}
+	read := func() status {
+		t.Helper()
+		response := f.request(http.MethodGet, "/subjects", "", admin)
+		var items []status
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &items) != nil {
+			t.Fatalf("admin catalog: %d %s", response.Code, response.Body.String())
+		}
+		for _, item := range items {
+			if item.ID == course.ID {
+				return item
+			}
+		}
+		t.Fatalf("materials course missing from catalog: %s", response.Body.String())
+		return status{}
+	}
+	check := func(want string, ready, stale bool) {
+		t.Helper()
+		got := read()
+		if got.Preparation.Exam.State != want || got.ExamReady != ready || got.Preparation.Exam.Stale != stale {
+			t.Fatalf("preparation got state=%s exam_ready=%t stale=%t, want %s/%t/%t", got.Preparation.Exam.State, got.ExamReady, got.Preparation.Exam.Stale, want, ready, stale)
+		}
+	}
+	check("needs_metadata", false, false)
+	if _, err := f.pool.Exec(ctx, `UPDATE subject_materials SET week=1,kind='lecture' WHERE id='material:status'`); err != nil {
+		t.Fatal(err)
+	}
+	check("queued", false, false)
+	if _, err := f.pool.Exec(ctx, `UPDATE material_ocr_jobs SET status='processing' WHERE material_id='material:status'`); err != nil {
+		t.Fatal(err)
+	}
+	check("processing", false, false)
+	if _, err := f.pool.Exec(ctx, `UPDATE material_ocr_jobs SET status='ready' WHERE material_id='material:status'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO material_cleaning_jobs(material_id,status,updated_at) VALUES ('material:status','processing',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE subject_materials SET status='parsed' WHERE id='material:status'`); err != nil {
+		t.Fatal(err)
+	}
+	check("processing", false, false)
+	if _, err := f.pool.Exec(ctx, `UPDATE material_cleaning_jobs SET status='failed' WHERE material_id='material:status'`); err != nil {
+		t.Fatal(err)
+	}
+	check("failed", false, false)
+	if _, err := f.pool.Exec(ctx, `UPDATE material_cleaning_jobs SET status='ready',s3_report_key='report' WHERE material_id='material:status'`); err != nil {
+		t.Fatal(err)
+	}
+	check("needs_build", false, false)
+	if _, err := f.pool.Exec(ctx, `INSERT INTO course_graph_jobs(subject_id,source,fingerprint,status,error_message,updated_at)
+SELECT $1,'materials',fingerprint,'pending','temporary failure before retry',2 FROM course_graph_inputs WHERE subject_id=$1`, course.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO course_graphs(subject_id,source,fingerprint,graph,updated_at) VALUES ($1,'materials','old','{}',1)`, course.ID); err != nil {
+		t.Fatal(err)
+	}
+	check("queued", true, true)
 }

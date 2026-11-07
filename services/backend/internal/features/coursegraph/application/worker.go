@@ -28,7 +28,7 @@ type Repository interface {
 	Request(context.Context, string, time.Time) (bool, error)
 	RetryMap(ctx context.Context, subjectID, expectedFingerprint string, now time.Time) (bool, error)
 	// Published lists the graphs Geek examines by.
-	Published(context.Context) ([]json.RawMessage, error)
+	Published(context.Context) ([]PublishedGraph, error)
 	// SaveMap stores an imported competency map and queues its build; false
 	// when a build is already queued or running.
 	SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error)
@@ -36,6 +36,10 @@ type Repository interface {
 	SaveMapIfCurrent(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, expectedFingerprint string, now time.Time) (bool, error)
 	// MapGraph is the graph of the imported competency map.
 	MapGraph(context.Context, string) (json.RawMessage, error)
+}
+type PublishedGraph struct {
+	SubjectID string
+	Graph     json.RawMessage
 }
 type Materials interface {
 	List(context.Context, string) ([]material.Material, error)
@@ -54,6 +58,8 @@ type Builder interface {
 // them without waiting.
 type Voices interface {
 	Prepare(texts []string) int
+	TrackPublished(subjectID, graphVersion string, texts []string)
+	TrackRestored(subjectID, graphVersion string, texts []string)
 }
 
 // Questions prepares the main question and its rephrase of every topic of a
@@ -76,8 +82,9 @@ type Worker struct {
 	questions Questions
 	maps      MapReader
 	// progress of running builds by subject, shown in snapshots.
-	mu       sync.Mutex
-	progress map[string]coursegraph.BuildProgress
+	mu            sync.Mutex
+	progress      map[string]coursegraph.BuildProgress
+	publicationMu sync.Mutex
 }
 
 // New builds the graph worker; voices may be nil, then questions are voiced
@@ -117,18 +124,51 @@ func (w *Worker) PrepareVoices(ctx context.Context) error {
 	if w.voices == nil {
 		return nil
 	}
+	w.publicationMu.Lock()
+	defer w.publicationMu.Unlock()
 	graphs, err := w.repo.Published(ctx)
 	if err != nil {
 		return err
 	}
 	queued, total := 0, 0
 	for _, graph := range graphs {
-		questions := TopicQuestions(graph)
+		questions := TopicQuestions(graph.Graph)
 		total += len(questions)
+		w.voices.TrackRestored(graph.SubjectID, GraphVersion(graph.Graph), questions)
 		queued += w.voices.Prepare(questions)
 	}
 	logx.From(ctx).Info("published graph questions queued for synthesis", zap.Int("queued", queued), zap.Int("total", total), zap.Int("graphs", len(graphs)))
 	return nil
+}
+
+// RefreshPublishedAudio restores a course omitted by startup recovery after
+// it becomes published again while the backend is running.
+func (w *Worker) RefreshPublishedAudio(ctx context.Context, subjectID string) error {
+	if w.voices == nil {
+		return nil
+	}
+	w.publicationMu.Lock()
+	defer w.publicationMu.Unlock()
+	graphs, err := w.repo.Published(ctx)
+	if err != nil {
+		return err
+	}
+	for _, graph := range graphs {
+		if graph.SubjectID != subjectID {
+			continue
+		}
+		questions := TopicQuestions(graph.Graph)
+		w.voices.TrackRestored(subjectID, GraphVersion(graph.Graph), questions)
+		w.voices.Prepare(questions)
+		break
+	}
+	return nil
+}
+
+// GraphVersion follows the hash used by Geek for a stored graph.
+func GraphVersion(graph json.RawMessage) string {
+	sum := sha256.Sum256(graph)
+	return "pg:" + hex.EncodeToString(sum[:8])
 }
 
 // TopicQuestions are the prepared texts of a built graph that Geek asks as
@@ -624,13 +664,12 @@ func (w *Worker) publish(ctx context.Context, job coursegraph.Job, graph json.Ra
 	// The questions are voiced in the background before the graph is
 	stage++
 	report(coursegraph.BuildProgress{Stage: "publish"})
-	// Queueing speech does not wait for synthesis.
-	// published, so the first students already hear them from the cache.
+	// Preserve the existing pre-publication queueing behavior. The progress registry only tracks the version if Finish accepts it.
+	questions := TopicQuestions(graph)
 	if w.voices != nil {
-		questions := TopicQuestions(graph)
 		logx.From(ctx).Info("course graph questions queued for synthesis", zap.String("subject_id", job.SubjectID), zap.Int("queued", w.voices.Prepare(questions)), zap.Int("total", len(questions)))
 	}
-	accepted, err := w.repo.Finish(ctx, job, graph, time.Now())
+	accepted, err := w.finishPublication(ctx, job, graph, questions)
 	if err != nil || accepted {
 		return err
 	}
@@ -642,4 +681,21 @@ func (w *Worker) publish(ctx context.Context, job coursegraph.Job, graph json.Ra
 		return owner.Release(context.WithoutCancel(ctx), job, time.Now())
 	}
 	return nil
+}
+
+// Serialize publication and progress registration with startup recovery.
+func (w *Worker) finishPublication(ctx context.Context, job coursegraph.Job, graph json.RawMessage, questions []string) (bool, error) {
+	w.publicationMu.Lock()
+	defer w.publicationMu.Unlock()
+	accepted, err := w.repo.Finish(ctx, job, graph, time.Now())
+	if err == nil && accepted && w.voices != nil {
+		versionGraph := graph
+		if snapshot, readErr := w.repo.Read(ctx, job.SubjectID); readErr == nil && len(snapshot.Graph) > 0 {
+			versionGraph = snapshot.Graph
+		}
+		w.voices.TrackPublished(job.SubjectID, GraphVersion(versionGraph), questions)
+		w.voices.Prepare(questions)
+		logx.From(ctx).Info("published course graph questions queued for synthesis", zap.String("subject_id", job.SubjectID), zap.Int("total", len(questions)))
+	}
+	return accepted, err
 }

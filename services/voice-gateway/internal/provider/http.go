@@ -4,8 +4,12 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 	"google.golang.org/grpc/codes"
 	"io"
 	"mime"
@@ -21,7 +25,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/audio"
-	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 )
 
 const (
@@ -60,7 +63,7 @@ func statusCode(err error) codes.Code {
 func responseFailure(resp *http.Response, stt bool) error {
 	code := codes.Internal
 	switch resp.StatusCode {
-	case 429, 503:
+	case 401, 403, 429, 503:
 		code = codes.Unavailable
 	case 408, 504:
 		code = codes.DeadlineExceeded
@@ -84,16 +87,18 @@ func responseFailure(resp *http.Response, stt bool) error {
 			}
 		}
 	}
-	return &diagnostic.Error{Code: code, Uncertain: resp.StatusCode == http.StatusGatewayTimeout || resp.StatusCode == http.StatusRequestTimeout, Stage: "upstream", Reason: "http_response", HTTPStatus: resp.StatusCode}
+	return &diagnostic.Error{Code: code, Uncertain: resp.Header.Get("X-Voice-Execution-State") == "uncertain" || ((resp.StatusCode == http.StatusGatewayTimeout || resp.StatusCode == http.StatusRequestTimeout) && resp.Header.Get("X-Voice-Execution-State") != "not-started" && resp.Header.Get("X-Voice-Execution-State") != "finished"), Stage: "upstream", Reason: "http_response", HTTPStatus: resp.StatusCode}
 }
 
 type STT struct {
+	Token    string
 	URL      string
 	Model    string
 	Longform bool
 	Timeout  time.Duration
 }
 type TTS struct {
+	Token    string
 	URL      string
 	Timeout  time.Duration
 	Profiles map[string]Options
@@ -156,8 +161,9 @@ func (p *HTTP) Transcribe(ctx context.Context, instance string, data []byte, med
 		}
 	}
 	texts := make([]string, 0, len(parts))
-	for _, part := range parts {
-		text, err := p.transcribeOnce(ctx, cfg, part, media)
+	for index, part := range parts {
+		partCtx := context.WithValue(ctx, partKey{}, index)
+		text, err := p.transcribeOnce(partCtx, cfg, part, media)
 		if err != nil {
 			return "", err
 		}
@@ -197,6 +203,7 @@ func (p *HTTP) transcribeOnce(ctx context.Context, cfg STT, data []byte, media s
 		return "", err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	setReceiverHeaders(req, cfg.Token)
 	if err := ctx.Err(); err != nil {
 		return "", &diagnostic.Error{Code: statusCode(err), Stage: "connect", Reason: "cancelled_before_send"}
 	}
@@ -246,6 +253,7 @@ func (p *HTTP) Synthesize(ctx context.Context, instance, profile, text string) (
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	setReceiverHeaders(req, cfg.Token)
 	if err := ctx.Err(); err != nil {
 		return nil, &diagnostic.Error{Code: statusCode(err), Stage: "connect", Reason: "cancelled_before_send"}
 	}
@@ -274,4 +282,24 @@ func responseReadFailure(err error) error {
 	d.Reason = "response_body_interrupted"
 	d.HTTPStatus = 200
 	return &d
+}
+
+// Each chunk is a separate receiver job, stable for the lifetime of a gateway job.
+type partKey struct{}
+
+func setReceiverHeaders(req *http.Request, token string) {
+	if token == "" {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	id := diagnostic.ID(req.Context())
+	if id == "" {
+		var raw [16]byte
+		if _, err := rand.Read(raw[:]); err != nil {
+			return
+		}
+		id = hex.EncodeToString(raw[:])
+	}
+	index, _ := req.Context().Value(partKey{}).(int)
+	req.Header.Set("Idempotency-Key", fmt.Sprintf("%s-%d", id, index))
 }

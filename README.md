@@ -169,7 +169,7 @@ STT и TTS вызываются backend через два gRPC-адаптера 
 3. Запустите `./dev.sh -d`. По умолчанию приложение доступно на `https://localhost:8443`, админка — на `https://localhost:8443/admin/courses`; порт задаётся в `.env`.
 4. Проверьте backend и БД: `curl -k https://localhost:8443/api/v1/health` (при другом порте замените `8443`). Доступность моделей и S3 эта проверка не подтверждает.
 
-Серверный запуск: `./prod.sh -d` с `docker-compose.prod.yaml`, заранее собранными образами и отдельно подготовленными `deployment/<service>/prod.yaml` для backend, llm-gateway, voice-gateway и course-graph. Voice gateway выбирает YAML через `--config`; остальные сервисы сохраняют существующий выбор пути. Серверные секреты в Git не помещаются; существующий `.env` не меняется. Скрипт не создаёт сертификаты и не собирает образы.
+Серверный запуск: `./prod.sh -d` с `docker-compose.prod.yaml`, заранее собранными образами и отдельно подготовленными `deployment/<service>/prod.yaml` для backend, llm-gateway, voice-gateway и course-graph. Voice gateway выбирает YAML через `--config`; остальные сервисы сохраняют существующий выбор пути. Серверные секреты в Git не помещаются; существующий `.env` не меняется. Скрипт не создаёт сертификаты и не собирает образы. В prod Grafana публикуется только на `127.0.0.1:3000`, анонимный вход отключён. Для удалённого доступа используйте SSH-туннель; при первом входе смените начальный пароль администратора.
 
 Подробности настройки и запуска: [backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md), [LLM gateway](services/llm-gateway/README.md), [voice gateway](services/voice-gateway/README.md).
 

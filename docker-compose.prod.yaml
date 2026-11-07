@@ -1,5 +1,12 @@
 # Provision YAML and TLS certificates outside Git; existing .env is unchanged.
 services:
+  grafana:
+    ports: !override
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
   voice-gateway:
     command: ["--config", "/work/voice-gateway/config/prod.yaml"]
     volumes:
